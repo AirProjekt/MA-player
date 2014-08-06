@@ -1,0 +1,118 @@
+#!/usr/bin/env python
+
+import spade
+from bot.bot import *
+from time import sleep
+import sys
+
+try:
+    import psyco
+    psyco.full()
+except:
+    print 'Psyco not found'
+    
+class Igrac( spade.Agent.Agent ):
+  class TrazimIgru( spade.Behaviour.OneShotBehaviour ):
+    def _process( self ):
+      originDTM = DTM( {(119, 277): (113, 201, 212), (0, 0): (27, 38, 153), (430, 192): (255, 217, 17), (335, 250): (31, 0, 1)} ) 
+      self.myAgent.origin = findDTM( originDTM, 0, 0, self.myAgent.sx, self.myAgent.sy )
+      if self.myAgent.origin:
+	if self.myAgent.origin != (0, 0):
+	  setOrigin( self.myAgent.origin )
+	print 'Pronasao sam igru'
+	self._exitcode = self.myAgent.P_IGRA_PRONADJENA
+	sleep( 1 )
+      else:
+	print 'Ne mogu pronaci igru!'
+	sleep( 1 )
+	self._exitcode = self.myAgent.P_NEMA_IGRE
+    
+  class PokrecemRazinu( spade.Behaviour.OneShotBehaviour ):
+    def _process( self ):
+      if self.myAgent.razina > 3:
+	self._exitcode = self.myAgent.P_NEMA_VISE_RAZINA
+	return
+      print 'Trazim gumb za pocetak razine...'
+      area = getArea( 0, 0, 600, 480 )
+      for y in range( 600 ):
+	for x in range( 800 ):
+	  if area.getpixel( ( x, y ) ) in [ ( 155, 205, 45 ), ( 182, 222, 50 ), (193, 226, 173) ]:
+	    print 'Pronasao sam gumb!'
+	    mouseClick( x, y, True )
+	    self.myAgent.razina += 1
+	    if self.myAgent.razina == 1:
+	      print 'Tek je pocetak igre, moram kliknuti jos jednom...'
+	      sleep( 1 )
+	      self._exitcode = self.myAgent.P_POCETAK_IGRE
+	      return
+	    self._exitcode = self.myAgent.P_RAZINA_POKRENUTA
+	    return
+      print 'Ne mogu pronaci gumb za pocetak razine'
+      sleep( 1 )
+      self._exitcode = self.myAgent.P_NEMA_GUMBA
+      
+  class BorimSe( spade.Behaviour.OneShotBehaviour ):
+    def _process( self ):
+      print 'Borim se...'
+      self.myAgent.brojac_pokusaja += 1
+      area = getArea( 0, 0, 600, 480 )
+      for x in range( 0, 800, 10 ):
+	for y in range( 0, 600, 10 ):
+	  if area.getpixel( ( x, y ) ) in [ ( 0, 101, 90 ), ( 174, 174, 84 ), ( 187, 36, 56 ), ( 14, 29, 43 ), ( 93, 48, 156 ),  ( 185, 192, 158 ), ( 205, 36, 1 ) ]: #, ( 87, 87, 87 ),( 0, 162, 126 ), ( 255, 204, 0 )
+	    print 'Pucam!'
+	    mouseClick( x, y, True )
+	    sleep( 0.05 )
+	    self.myAgent.brojac_pokusaja = 0
+      if self.myAgent.brojac_pokusaja > 200:
+	self.myAgent.brojac_pokusaja = 0
+	self._exitcode = self.myAgent.P_NEMA_PROTIVNIKA
+      else:
+        self._exitcode = self.myAgent.P_JOS_PROTIVNIKA
+  
+  class KrajIgre( spade.Behaviour.OneShotBehaviour ):
+    def _process( self ):
+      print 'Igra je zavrsena!'
+      self.myAgent._kill()
+  
+  def _setup( self ):
+    print 'Idemo se igrati...'
+    
+    self.origin = None
+    self.sx, self.sy = getScreenSize()
+    self.razina = 0
+    self.brojac_pokusaja = 0
+    
+    self.S_TRAZIM_IGRU     = 1
+    self.S_POKRECEM_RAZINU = 2
+    self.S_BORIM_SE        = 3
+    self.S_KRAJ_IGRE       = 4
+    
+    self.P_NEMA_IGRE           = 100
+    self.P_IGRA_PRONADJENA     = 101
+    self.P_NEMA_GUMBA          = 200
+    self.P_NEMA_VISE_RAZINA    = 201
+    self.P_POCETAK_IGRE        = 202
+    self.P_RAZINA_POKRENUTA    = 203
+    self.P_JOS_PROTIVNIKA      = 300
+    self.P_NEMA_PROTIVNIKA     = 301
+    
+    p = spade.Behaviour.FSMBehaviour()
+    p.registerFirstState( self.TrazimIgru(), self.S_TRAZIM_IGRU )
+    p.registerState( self.PokrecemRazinu(), self.S_POKRECEM_RAZINU )
+    p.registerState( self.BorimSe(), self.S_BORIM_SE )
+    p.registerLastState( self.KrajIgre(), self.S_KRAJ_IGRE )
+    
+    p.registerTransition( self.S_TRAZIM_IGRU, self.S_TRAZIM_IGRU, self.P_NEMA_IGRE )
+    p.registerTransition( self.S_TRAZIM_IGRU, self.S_POKRECEM_RAZINU, self.P_IGRA_PRONADJENA )
+    p.registerTransition( self.S_POKRECEM_RAZINU, self.S_POKRECEM_RAZINU, self.P_NEMA_GUMBA )
+    p.registerTransition( self.S_POKRECEM_RAZINU, self.S_POKRECEM_RAZINU, self.P_POCETAK_IGRE )
+    p.registerTransition( self.S_POKRECEM_RAZINU, self.S_KRAJ_IGRE, self.P_NEMA_VISE_RAZINA )
+    p.registerTransition( self.S_POKRECEM_RAZINU, self.S_BORIM_SE, self.P_RAZINA_POKRENUTA )
+    p.registerTransition( self.S_BORIM_SE, self.S_BORIM_SE, self.P_JOS_PROTIVNIKA )
+    p.registerTransition( self.S_BORIM_SE, self.S_POKRECEM_RAZINU, self.P_NEMA_PROTIVNIKA )
+    
+    self.addBehaviour( p, None )
+    
+if __name__ == '__main__':
+  a = Igrac( 'igrac@127.0.0.1', 'tajna' )
+  a.start()
